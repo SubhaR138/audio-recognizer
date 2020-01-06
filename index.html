@@ -7,8 +7,13 @@
         <script src="https://unpkg.com/@tensorflow-models/speech-commands"></script>
     </head>
     <body>
+        <button id="left" onmousedown="collect(0)" onmouseup="collect(null)">Left</button>
+        <button id="right" onmousedown="collect(0)" onmouseup="collect(null)">Right</button>
+        <button id="noise" onmousedown="collect(0)" onmouseup="collect(null)">Noise</button>
+        <!--onmousedown event occurs when a user presses a mouse nutton over an element-->
+        <!--onmousedown event occurs when a user releases a mouse button overan element-->
+
         <!--console will be used to display the output model-->
-        
         <div id="console"></div>
         <script src="script.js"></script>
     </body>
