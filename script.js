@@ -41,7 +41,8 @@ const words = recognizer.wordLabels();
 
       recognizer = speechCommands.create('BROWSER_FFT');
       await recognizer.ensureModelLoaded();
-      predictWord();
+     // predictWord();
+     buildModel();
      }
      
      app();
@@ -55,7 +56,7 @@ const words = recognizer.wordLabels();
 
 /*pressing the three buttons that we are created in html file will call the collect function,
 *which will creating training examples for our model.collect() associates a label
-*with the o/p of recognizer.liten*/
+*with the o/p of recognizer.listen*/
 
      function collect(labels){
        if(recognizer.isListening()){
@@ -102,6 +103,114 @@ const words = recognizer.wordLabels();
       const std = 10;
       return x.map(x => (x - mean) / std);
      }
+     //train a model
+
+     const INPUT_SHAPE = [NUM_FRAMES, 232, 1];
+
+//the first dimension is the number of audio frames
+//second dimension(232) is the number of frequency datapoints in every frame of spectogram
+//the last dimension is set to 1,this follows the convention of convolutional neural network in tfjs and keras
+
+     let model;
+
+    async function train() {
+      toggleButtons(false);
+//returns oneHot tensor among three classes
+      const ys = tf.oneHot(examples.map(e => e.label), 3);
+
+/*the three ... dots spread over the input shapes and all its properties,then
+*overwrite the existing properties with the one we'are passing.*/
+      const xsShape = [examples.length, ...INPUT_SHAPE];
+      const xs = tf.tensor(flatten(examples.map(e => e.vals)), xsShape);
+
+    await model.fit(xs, ys, {
+      batchSize: 16,
+      epochs: 10,
+      callbacks: {
+      onEpochEnd: (epoch, logs) => {
+
+//$ commonly used as identifier and shortcut to the function document.getElementByID
+       document.querySelector('#console').textContent =
+           `Accuracy: ${(logs.acc * 100).toFixed(1)}% Epoch: ${epoch + 1}`;
      }
+    }
+  });
+       tf.dispose([xs, ys]);
+       toggleButtons(true);
+}
+
+    function buildModel() {
+       model = tf.sequential();
+//covolutionlayer is used to process the audio data
+//depthwiseConv2D applies convolution operation on each input channel separately.
+       model.add(tf.layers.depthwiseConv2d({
+/*depthmultiplier changes the number of channels in each layer,
+*controls how many output channels are generated per input channel in the depthwise step.*/
+       depthMultiplier: 8,
+       kernelSize: [NUM_FRAMES, 3],
+       activation: 'relu',
+       inputShape: INPUT_SHAPE
+//the input_shape of the model is [num-frames,232,1]
+//232 is because the amount of frequencies needed to capture the human voice
+ }));
+       model.add(tf.layers.maxPooling2d({poolSize: [1, 2], strides: [2, 2]}));
+       model.add(tf.layers.flatten());
+       model.add(tf.layers.dense({units: 3, activation: 'softmax'}));
+       const optimizer = tf.train.adam(0.01);
+       model.compile({
+           optimizer,
+           loss: 'categoricalCrossentropy',
+           metrics: ['accuracy']
+        });
+      }
+//forEach method calls a function once for each element in an array
+     function toggleButtons(enable) {
+        document.querySelectorAll('button').forEach(b => b.disabled = !enable);
+     }
+
+     function flatten(tensors) {
+       const size = tensors[0].length;
+       const result = new Float32Array(tensors.length * size);
+       tensors.forEach((arr, i) => result.set(arr, i * size));
+       return result;
+}
+//The slider function reduces the slider for left ,increases for right and nochange for noise
+async function moveSlider(labelTensor) {
+  //we can call data() method and get its first argument to get our label from it.
+  const label = (await labelTensor.data())[0];
+  document.getElementById('console').textContent = label;
+  if (label == 2) {
+    return;
+  }
+  let delta = 0.1;
+  const prevValue = +document.getElementById('output').value;
+  document.getElementById('output').value =
+      prevValue + (label === 0 ? -delta : delta);
+ }
+ 
+ function listen() {
+  if (recognizer.isListening()) {
+    recognizer.stopListening();
+    toggleButtons(true);
+    document.getElementById('listen').textContent = 'Listen';
+    return;
+  }
+  toggleButtons(false);
+  document.getElementById('listen').textContent = 'Stop';
+  document.getElementById('listen').disabled = false;
+ 
+  recognizer.listen(async ({spectrogram: {frameSize, data}}) => {
+    const vals = normalize(data.subarray(-frameSize * NUM_FRAMES));
+    const input = tf.tensor(vals, [1, ...INPUT_SHAPE]);
+    const probs = model.predict(input);
+    const predLabel = probs.argMax(1);
+    await moveSlider(predLabel);
+    tf.dispose([input, probs, predLabel]);
+  }, {
+    overlapFactor: 0.999,
+    includeSpectrogram: true,
+    invokeCallbackOnNoiseAndUnknown: true
+  });
+ }
     
      
