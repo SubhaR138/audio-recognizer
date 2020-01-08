@@ -78,9 +78,11 @@ const words = recognizer.wordLabels();
 
 //label 0,1,2 for left,right and noise
 //vals are 696 numbers holding the frequency information
+
         examples.push({vals, label});
       
 //storing all data in example variable
+
         document.querySelector('#console').textContent =
             `${examples.length} examples collected`;
       }, {
@@ -91,18 +93,24 @@ const words = recognizer.wordLabels();
         overlapFactor: 0.999,
 
 //let the callback function invoked with the spectogram data included in the argument
+
         includeSpectrogram: true,
         invokeCallbackOnNoiseAndUnknown: true
+
 //whether the callback function invoked if the word with max probabilty is 'noise' or 'unknown' token.
+
       });
      }
 
      //the spectogram values are usually a large negative numbers around -100 and deviation 10.
+
      function normalize(x) {
       const mean = -100;
+      
       const std = 10;
       return x.map(x => (x - mean) / std);
      }
+    
      //train a model
 
      const INPUT_SHAPE = [NUM_FRAMES, 232, 1];
@@ -115,14 +123,17 @@ const words = recognizer.wordLabels();
 
     async function train() {
       toggleButtons(false);
+
 //returns oneHot tensor among three classes
+
       const ys = tf.oneHot(examples.map(e => e.label), 3);
 
 /*the three ... dots spread over the input shapes and all its properties,then
 *overwrite the existing properties with the one we'are passing.*/
+
       const xsShape = [examples.length, ...INPUT_SHAPE];
       const xs = tf.tensor(flatten(examples.map(e => e.vals)), xsShape);
-
+      console.log(xs);
     await model.fit(xs, ys, {
       batchSize: 16,
       epochs: 10,
@@ -130,8 +141,12 @@ const words = recognizer.wordLabels();
       onEpochEnd: (epoch, logs) => {
 
 //$ commonly used as identifier and shortcut to the function document.getElementByID
+
        document.querySelector('#console').textContent =
            `Accuracy: ${(logs.acc * 100).toFixed(1)}% Epoch: ${epoch + 1}`;
+
+//toFixed method converts a number into a string,by keeping the specified number of decimals.
+
      }
     }
   });
@@ -141,17 +156,23 @@ const words = recognizer.wordLabels();
 
     function buildModel() {
        model = tf.sequential();
+
 //covolutionlayer is used to process the audio data
 //depthwiseConv2D applies convolution operation on each input channel separately.
+
        model.add(tf.layers.depthwiseConv2d({
+
 /*depthmultiplier changes the number of channels in each layer,
 *controls how many output channels are generated per input channel in the depthwise step.*/
+
        depthMultiplier: 8,
        kernelSize: [NUM_FRAMES, 3],
        activation: 'relu',
        inputShape: INPUT_SHAPE
+
 //the input_shape of the model is [num-frames,232,1]
 //232 is because the amount of frequencies needed to capture the human voice
+
  }));
        model.add(tf.layers.maxPooling2d({poolSize: [1, 2], strides: [2, 2]}));
        model.add(tf.layers.flatten());
@@ -163,7 +184,9 @@ const words = recognizer.wordLabels();
            metrics: ['accuracy']
         });
       }
+
 //forEach method calls a function once for each element in an array
+
      function toggleButtons(enable) {
         document.querySelectorAll('button').forEach(b => b.disabled = !enable);
      }
@@ -174,23 +197,35 @@ const words = recognizer.wordLabels();
        tensors.forEach((arr, i) => result.set(arr, i * size));
        return result;
 }
+
 //The slider function reduces the slider for left ,increases for right and nochange for noise
+
 async function moveSlider(labelTensor) {
+
   //we can call data() method and get its first argument to get our label from it.
+
   const label = (await labelTensor.data())[0];
   document.getElementById('console').textContent = label;
   if (label == 2) {
     return;
   }
+
+  //delta rule is a gradient descent learning rule for updating the weights of the input
+
   let delta = 0.1;
   const prevValue = +document.getElementById('output').value;
   document.getElementById('output').value =
       prevValue + (label === 0 ? -delta : delta);
  }
- 
+
+ //this listen function listens to the microphone and makes real time prediction.
+
  function listen() {
   if (recognizer.isListening()) {
     recognizer.stopListening();
+
+//we set the togglebuttons true,it will allow the listen function to start listening.
+
     toggleButtons(true);
     document.getElementById('listen').textContent = 'Listen';
     return;
@@ -200,11 +235,29 @@ async function moveSlider(labelTensor) {
   document.getElementById('listen').disabled = false;
  
   recognizer.listen(async ({spectrogram: {frameSize, data}}) => {
+
+    //It normalizes the raw spectrogram
+
     const vals = normalize(data.subarray(-frameSize * NUM_FRAMES));
     const input = tf.tensor(vals, [1, ...INPUT_SHAPE]);
+
+    //Here we call the trained model to make prediction.
+
     const probs = model.predict(input);
+
+/*the output of model.predict is a tensor of shape[1,num-classes] representing the
+*over the number of classes.
+*The tensor has a dimension 1 which desccribes the number of batches(examples)*/
+
     const predLabel = probs.argMax(1);
+
+//prob.argmax function returns the class with highest probabilty
+//we pass one as the argument beacuse we compute the probabilty for num_classes
+
     await moveSlider(predLabel);
+
+//this slider will increase and decrease the value of the slide according to the labels
+
     tf.dispose([input, probs, predLabel]);
   }, {
     overlapFactor: 0.999,
@@ -212,5 +265,6 @@ async function moveSlider(labelTensor) {
     invokeCallbackOnNoiseAndUnknown: true
   });
  }
+
     
      
